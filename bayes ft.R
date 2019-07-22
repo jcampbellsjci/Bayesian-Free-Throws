@@ -7,6 +7,7 @@ library(nbastatR)
 library(rjson)
 library(png)
 library(grid)
+library(scales)
 library(tidyverse)
 
 
@@ -24,7 +25,11 @@ team_dictionary <- nba_teams()
 #### Function it Up ####
 
 # date_ids pulls boxscore information from a given date
-date_ids <- function(month, day, year) {
+date_ids <- function(date) {
+  month <- str_sub(date, 1, 2)
+  day <- str_sub(date, 4, 5)
+  year <- str_sub(date, 7, 10)
+  
   url <- paste("https://stats.nba.com/stats/scoreboardV2?DayOffset=0&LeagueID=00&gameDate=", 
                month, "%2F", day, "%2F", year, sep = "")
   
@@ -40,10 +45,10 @@ date_ids <- function(month, day, year) {
 }
 
 # ft_data calculates the posterior and gives a plot as well as text output
-ft_data <- function(month, day, year) {
+ft_data <- function(date) {
   
   # Using date_ids to get available games
-  game_id_today <- date_ids(month = month, day = day, year = year)
+  game_id_today <- date_ids(date)
   
   # We only have team ids, so we need to filter the team_dictionary to get 
   # names
@@ -125,7 +130,7 @@ ft_data <- function(month, day, year) {
                       ymax = .3) +
     geom_segment(aes(x = Category, xend = Category, y = 0, yend = Value)) +
     geom_point(size = 5, fill = "white", pch = 22) +
-    ylim(0, 1) +
+    scale_y_continuous(labels = percent, limits = c(0, 1)) +
     scale_x_discrete(drop = F, labels = c("Today", "Past Five", "Expected", "")) +
     labs(y = "Percent", title = "Free Throw Percentages")
   
@@ -133,4 +138,4 @@ ft_data <- function(month, day, year) {
   print(output)
 }
 
-a <- ft_data(4, 7, 2019)
+a <- ft_data("04-07-2019")
