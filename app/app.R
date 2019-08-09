@@ -29,36 +29,40 @@ ui <- fluidPage(
                 "Date",
                 value = "2019-01-01"),
       
-      uiOutput("teams"),
+      uiOutput("team_selection"),
       
-      uiOutput("players"),
+      uiOutput("player_selection"),
       
       selectInput("prior",
                   "Prior",
                   choices = c(3, 5, 10))
     ),
     
-    mainPanel(plotOutput("team"),
-              tableOutput("df"))
+    # Main Panel plots the graph and produces a table of info
+    mainPanel(plotOutput("plot"),
+              tableOutput("table"))
   )
   
 )
-  
+
 server <- function(input, output) {
   
-  output$teams <- renderUI({
+  # First output is the ui for the team selection input
+  output$team_selection <- renderUI({
     
-    ids_df <- date_ids(as.character(input$date))
+    game_id_today <- date_ids(as.character(input$date))
     
+    # Filter out any team that doesn't play on a given date
     available_teams <- team_dictionary %>% 
-      filter(idTeam %in% c(ids_df$HOME_TEAM_ID, 
-                           ids_df$VISITOR_TEAM_ID))
+      filter(idTeam %in% c(game_id_today$HOME_TEAM_ID, 
+                           game_id_today$VISITOR_TEAM_ID))
     
     selectInput("team", "Team", available_teams$teamNameFull)
     
   })
   
-  output$players <- renderUI({
+  # Next output is the ui for the player selection input
+  output$player_selection <- renderUI({
     
     game_id_today <- date_ids(as.character(input$date))
     
@@ -69,11 +73,13 @@ server <- function(input, output) {
     id_choice <- available_teams %>%
       filter(teamNameFull == input$team)
     
+    # Selecting game id for the chosen team
     game_id <- game_id_today %>%
       filter(HOME_TEAM_ID == id_choice$idTeam |
                VISITOR_TEAM_ID == id_choice$idTeam) %>%
       select(GAME_ID)
     
+    # Using the game id to get the box score
     current <- box_scores(game_ids = game_id$GAME_ID, 
                           box_score_types = c("Traditional"), 
                           result_types = c("player"), 
@@ -87,7 +93,8 @@ server <- function(input, output) {
     
   })
   
-  output$df <- renderTable({
+  # Next we create the table that will be in the main panel
+  output$table <- renderTable({
     
     game_id_today <- date_ids(as.character(input$date))
     
@@ -143,7 +150,8 @@ server <- function(input, output) {
     final_count
   })
   
-  output$team <- renderPlot({
+  # Now creating the plot that will be used in the main panel
+  output$plot <- renderPlot({
     
     game_id_today <- date_ids(as.character(input$date))
     
