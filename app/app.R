@@ -47,39 +47,40 @@ ui <- fluidPage(
 
 server <- function(input, output) {
   
-  # First output is the ui for the team selection input
-  output$team_selection <- renderUI({
+  get_available_teams <- reactive({
     
     game_id_today <- date_ids(as.character(input$date))
     
-    # Filter out any team that doesn't play on a given date
     available_teams <- team_dictionary %>% 
       filter(idTeam %in% c(game_id_today$HOME_TEAM_ID, 
                            game_id_today$VISITOR_TEAM_ID))
+    
+    output <- list(game_id_today, available_teams)
+
+  })
+  
+  # First output is the ui for the team selection input
+  output$team_selection <- renderUI({
+    
+    available_teams <- get_available_teams()[[2]]
     
     selectInput("team", "Team", available_teams$teamNameFull)
     
   })
   
-  # Next output is the ui for the player selection input
-  output$player_selection <- renderUI({
+  get_box_score <- reactive({
     
-    game_id_today <- date_ids(as.character(input$date))
-    
-    available_teams <- team_dictionary %>% 
-      filter(idTeam %in% c(game_id_today$HOME_TEAM_ID, 
-                           game_id_today$VISITOR_TEAM_ID))
+    game_id_today <- get_available_teams()[[1]]
+    available_teams <- get_available_teams()[[2]]
     
     id_choice <- available_teams %>%
       filter(teamNameFull == input$team)
     
-    # Selecting game id for the chosen team
     game_id <- game_id_today %>%
       filter(HOME_TEAM_ID == id_choice$idTeam |
                VISITOR_TEAM_ID == id_choice$idTeam) %>%
       select(GAME_ID)
     
-    # Using the game id to get the box score
     current <- box_scores(game_ids = game_id$GAME_ID, 
                           box_score_types = c("Traditional"), 
                           result_types = c("player"), 
@@ -88,36 +89,23 @@ server <- function(input, output) {
       .[[1]] %>%
       filter(idTeam == id_choice$idTeam) %>%
       select(namePlayer, ftm, fta)
+    
+    output <- list(current)
+    
+  })
+  
+  # Next output is the ui for the player selection input
+  output$player_selection <- renderUI({
+
+    current <- get_box_score()[[1]]
     
     selectInput("player", "Player", current$namePlayer)
     
   })
   
-  # Next we create the table that will be in the main panel
-  output$table <- renderTable({
+  create_table <- reactive({
     
-    game_id_today <- date_ids(as.character(input$date))
-    
-    available_teams <- team_dictionary %>% 
-      filter(idTeam %in% c(game_id_today$HOME_TEAM_ID, 
-                           game_id_today$VISITOR_TEAM_ID))
-    
-    id_choice <- available_teams %>%
-      filter(teamNameFull == input$team)
-    
-    game_id <- game_id_today %>%
-      filter(HOME_TEAM_ID == id_choice$idTeam |
-               VISITOR_TEAM_ID == id_choice$idTeam) %>%
-      select(GAME_ID)
-    
-    current <- box_scores(game_ids = game_id$GAME_ID, 
-                          box_score_types = c("Traditional"), 
-                          result_types = c("player"), 
-                          assign_to_environment = F) %>%
-      .$dataBoxScore %>%
-      .[[1]] %>%
-      filter(idTeam == id_choice$idTeam) %>%
-      select(namePlayer, ftm, fta)
+    current <- get_box_score()[[1]]
     
     game_logs <- logs %>%
       filter(namePlayer == input$player) %>%
@@ -147,61 +135,25 @@ server <- function(input, output) {
              posterior = (ftm + total_ftm) / (fta + total_fta)) %>%
       select(- urlPlayerThumbnail)
     
+    output <- list(final, final_count, final_percent)
+    
+  })
+  
+  # Next we create the table that will be in the main panel
+  output$table <- renderTable({
+    
+    final_count <- create_table()[[2]]
+    
     final_count
+    
   })
   
   # Now creating the plot that will be used in the main panel
   output$plot <- renderPlot({
     
-    game_id_today <- date_ids(as.character(input$date))
-    
-    available_teams <- team_dictionary %>% 
-      filter(idTeam %in% c(game_id_today$HOME_TEAM_ID, 
-                           game_id_today$VISITOR_TEAM_ID))
-    
-    id_choice <- available_teams %>%
-      filter(teamNameFull == input$team)
-    
-    game_id <- game_id_today %>%
-      filter(HOME_TEAM_ID == id_choice$idTeam |
-               VISITOR_TEAM_ID == id_choice$idTeam) %>%
-      select(GAME_ID)
-    
-    current <- box_scores(game_ids = game_id$GAME_ID, 
-                          box_score_types = c("Traditional"), 
-                          result_types = c("player"), 
-                          assign_to_environment = F) %>%
-      .$dataBoxScore %>%
-      .[[1]] %>%
-      filter(idTeam == id_choice$idTeam) %>%
-      select(namePlayer, ftm, fta)
-    
-    game_logs <- logs %>%
-      filter(namePlayer == input$player) %>%
-      mutate(dateGame = as.Date(dateGame)) %>%
-      top_n(n = as.numeric(input$prior), dateGame) %>%
-      select(namePlayer, ftm, fta, urlPlayerThumbnail) %>%
-      group_by(namePlayer, urlPlayerThumbnail) %>%
-      summarize(total_ftm = sum(ftm), total_fta = sum(fta)) %>%
-      ungroup()
-    
-    final <- current %>%
-      filter(namePlayer == input$player) %>%
-      left_join(game_logs)
-    
-    final_percent <- final %>%
-      group_by(namePlayer) %>%
-      summarize(this_game = ftm / fta, 
-                past_five = total_ftm / total_fta, 
-                posterior = (ftm + total_ftm) / (fta + total_fta)) %>%
-      gather(key = "Category", value = "Value", this_game:posterior) %>%
-      mutate(Category = factor(Category, levels = c("this_game", "past_five",
-                                                    "posterior")))
-    final_count <- final %>%
-      group_by(namePlayer) %>%
-      mutate(this_game = ftm / fta, 
-             past_five = total_ftm / total_fta, 
-             posterior = (ftm + total_ftm) / (fta + total_fta))
+    final <- create_table()[[1]]
+    final_count <- create_table()[[2]]
+    final_percent <- create_table()[[3]]
     
     myurl <- final$urlPlayerThumbnail
     z <- tempfile()
@@ -220,6 +172,7 @@ server <- function(input, output) {
       scale_y_continuous(labels = percent, limits = c(0, 1)) +
       scale_x_discrete(drop = F, labels = c("Today", "Prior", "Expected", "")) +
       labs(y = "Percent", title = "Free Throw Percentages")
+    
   })
   
   
