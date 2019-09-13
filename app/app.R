@@ -39,8 +39,9 @@ ui <- fluidPage(
     ),
     
     # Main Panel plots the graph and produces a table of info
-    mainPanel(plotOutput("plot"),
-              tableOutput("table"))
+    mainPanel(tabsetPanel(
+      tabPanel("Free Throws", plotOutput("plot_ft"), tableOutput("table_ft")),
+      tabPanel("Field Goals", plotOutput("plot_fg"), tableOutput("table_fg"))))
   )
   
 )
@@ -88,7 +89,7 @@ server <- function(input, output) {
       .$dataBoxScore %>%
       .[[1]] %>%
       filter(idTeam == id_choice$idTeam) %>%
-      select(namePlayer, ftm, fta)
+      select(namePlayer, fgm, fga, ftm, fta)
     
     output <- list(current)
     
@@ -111,49 +112,101 @@ server <- function(input, output) {
       filter(namePlayer == input$player) %>%
       mutate(dateGame = as.Date(dateGame)) %>%
       top_n(n = as.numeric(input$prior), dateGame) %>%
-      select(namePlayer, ftm, fta, urlPlayerThumbnail) %>%
+      select(namePlayer, fgm, fga, ftm, fta, urlPlayerThumbnail) %>%
       group_by(namePlayer, urlPlayerThumbnail) %>%
-      summarize(total_ftm = sum(ftm), total_fta = sum(fta)) %>%
+      summarize(total_fgm = sum(fgm), total_fga = sum(fga),
+                total_ftm = sum(ftm), total_fta = sum(fta)) %>%
       ungroup()
     
     final <- current %>%
       filter(namePlayer == input$player) %>%
       left_join(game_logs)
     
-    final_percent <- final %>%
-      group_by(namePlayer) %>%
-      summarize(this_game = ftm / fta, 
-                past_five = total_ftm / total_fta, 
-                posterior = (ftm + total_ftm) / (fta + total_fta)) %>%
-      gather(key = "Category", value = "Value", this_game:posterior) %>%
-      mutate(Category = factor(Category, levels = c("this_game", "past_five",
-                                                    "posterior")))
     final_count <- final %>%
       group_by(namePlayer) %>%
-      mutate(this_game = ftm / fta, 
-             past_five = total_ftm / total_fta, 
-             posterior = (ftm + total_ftm) / (fta + total_fta)) %>%
+      mutate(this_game_fg = fgm / fga,
+             past_five_fg = total_fgm / total_fga,
+             posterior_fg = (fgm + total_fgm) / (fga + total_fga),
+             this_game_ft = ftm / fta, 
+             past_five_ft = total_ftm / total_fta, 
+             posterior_ft = (ftm + total_ftm) / (fta + total_fta)) %>%
       select(- urlPlayerThumbnail)
     
-    output <- list(final, final_count, final_percent)
+    output <- list(final, final_count)
     
   })
   
   # Next we create the table that will be in the main panel
-  output$table <- renderTable({
+  output$table_fg <- renderTable({
     
     final_count <- create_table()[[2]]
     
-    final_count
+    final_count <- final_count %>%
+      select(namePlayer, ends_with("fg"))
     
   })
   
   # Now creating the plot that will be used in the main panel
-  output$plot <- renderPlot({
+  output$plot_fg <- renderPlot({
     
     final <- create_table()[[1]]
     final_count <- create_table()[[2]]
-    final_percent <- create_table()[[3]]
+    
+    final_percent <- final %>%
+      group_by(namePlayer) %>%
+      summarize(this_game_fg = fgm / fga, 
+                past_five_fg = total_fgm / total_fga,
+                posterior_fg = (fgm + total_fgm) / (fga + total_fga)) %>%
+      gather(key = "Category", value = "Value", this_game_fg:posterior_fg) %>%
+      mutate(Category = factor(Category, levels = c("this_game_fg",
+                                                    "past_five_fg",
+                                                    "posterior_fg")))
+    
+    myurl <- final$urlPlayerThumbnail
+    z <- tempfile()
+    download.file(myurl, z, mode="wb")
+    pic <- readPNG(z)
+    file.remove(z)
+    pic <- rasterGrob(pic, interpolate = T)
+    
+    final_percent %>%
+      mutate(Category = factor(Category, levels = c(levels(Category), ""))) %>%
+      ggplot(aes(x = Category, y = Value)) +
+      annotation_custom(pic, xmin = 3.5, xmax = 4.5, ymin = -.06, 
+                        ymax = .3) +
+      geom_segment(aes(x = Category, xend = Category, y = 0, yend = Value)) +
+      geom_point(size = 5, fill = "white", pch = 22) +
+      scale_y_continuous(labels = percent, limits = c(0, 1)) +
+      scale_x_discrete(drop = F, labels = c("Today", "Prior", "Expected", "")) +
+      labs(y = "Percent", title = "Free Throw Percentages")
+    
+  })
+  
+  # Next we create the table that will be in the main panel
+  output$table_ft <- renderTable({
+    
+    final_count <- create_table()[[2]]
+    
+    final_count <- final_count %>%
+      select(namePlayer, ends_with("ft"))
+    
+  })
+  
+  # Now creating the plot that will be used in the main panel
+  output$plot_ft <- renderPlot({
+    
+    final <- create_table()[[1]]
+    final_count <- create_table()[[2]]
+    
+    final_percent <- final %>%
+      group_by(namePlayer) %>%
+      summarize(this_game_ft = ftm / fta, 
+                past_five_ft = total_ftm / total_fta, 
+                posterior_ft = (ftm + total_ftm) / (fta + total_fta)) %>%
+      gather(key = "Category", value = "Value", this_game_ft:posterior_ft) %>%
+      mutate(Category = factor(Category, levels = c("this_game_ft",
+                                                    "past_five_ft",
+                                                    "posterior_ft")))
     
     myurl <- final$urlPlayerThumbnail
     z <- tempfile()
