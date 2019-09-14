@@ -33,15 +33,17 @@ ui <- fluidPage(
       
       uiOutput("player_selection"),
       
-      selectInput("prior",
+      sliderInput("prior",
                   "Prior",
-                  choices = c(3, 5, 10))
+                  min = 1, max = 10, value = 3)
     ),
     
     # Main Panel plots the graph and produces a table of info
     mainPanel(tabsetPanel(
-      tabPanel("Free Throws", plotOutput("plot_ft"), tableOutput("table_ft")),
-      tabPanel("Field Goals", plotOutput("plot_fg"), tableOutput("table_fg"))))
+      tabPanel("Field Goals", plotOutput("plot_fg"), tableOutput("table_fg")),
+      tabPanel("Three Pointers", plotOutput("plot_3fg"), 
+               tableOutput("table_3fg")),
+      tabPanel("Free Throws", plotOutput("plot_ft"), tableOutput("table_ft"))))
   )
   
 )
@@ -89,7 +91,7 @@ server <- function(input, output) {
       .$dataBoxScore %>%
       .[[1]] %>%
       filter(idTeam == id_choice$idTeam) %>%
-      select(namePlayer, fgm, fga, ftm, fta)
+      select(namePlayer, fgm, fga, fg3m, fg3a, ftm, fta)
     
     output <- list(current)
     
@@ -112,9 +114,11 @@ server <- function(input, output) {
       filter(namePlayer == input$player) %>%
       mutate(dateGame = as.Date(dateGame)) %>%
       top_n(n = as.numeric(input$prior), dateGame) %>%
-      select(namePlayer, fgm, fga, ftm, fta, urlPlayerThumbnail) %>%
+      select(namePlayer, fgm, fga, fg3m, fg3a, ftm, fta, 
+             urlPlayerThumbnail) %>%
       group_by(namePlayer, urlPlayerThumbnail) %>%
       summarize(total_fgm = sum(fgm), total_fga = sum(fga),
+                total_fg3m = sum(fg3m), total_fg3a = sum(fg3a),
                 total_ftm = sum(ftm), total_fta = sum(fta)) %>%
       ungroup()
     
@@ -125,10 +129,13 @@ server <- function(input, output) {
     final_count <- final %>%
       group_by(namePlayer) %>%
       mutate(this_game_fg = fgm / fga,
-             past_five_fg = total_fgm / total_fga,
+             prior_fg = total_fgm / total_fga,
              posterior_fg = (fgm + total_fgm) / (fga + total_fga),
+             this_game_3fg = fg3m / fg3a,
+             prior_3fg = total_fg3m / total_fg3a,
+             posterior_3fg = (fg3m + total_fg3m) / (fg3a + total_fg3a),
              this_game_ft = ftm / fta, 
-             past_five_ft = total_ftm / total_fta, 
+             prior_ft = total_ftm / total_fta, 
              posterior_ft = (ftm + total_ftm) / (fta + total_fta)) %>%
       select(- urlPlayerThumbnail)
     
@@ -142,7 +149,8 @@ server <- function(input, output) {
     final_count <- create_table()[[2]]
     
     final_count <- final_count %>%
-      select(namePlayer, ends_with("fg"))
+      select(namePlayer, fgm, fga, total_fgm, total_fga,
+             this_game_fg, prior_fg, posterior_fg)
     
   })
   
@@ -178,7 +186,55 @@ server <- function(input, output) {
       geom_point(size = 5, fill = "white", pch = 22) +
       scale_y_continuous(labels = percent, limits = c(0, 1)) +
       scale_x_discrete(drop = F, labels = c("Today", "Prior", "Expected", "")) +
-      labs(y = "Percent", title = "Free Throw Percentages")
+      labs(y = "Percent", title = "Field Goal Percentages")
+    
+  })
+  
+  # Next we create the table that will be in the main panel
+  output$table_3fg <- renderTable({
+    
+    final_count <- create_table()[[2]]
+    
+    final_count <- final_count %>%
+      select(namePlayer, contains("3"))
+    
+  })
+  
+  # Now creating the plot that will be used in the main panel
+  output$plot_3fg <- renderPlot({
+    
+    final <- create_table()[[1]]
+    final_count <- create_table()[[2]]
+    
+    final_percent <- final %>%
+      group_by(namePlayer) %>%
+      summarize(this_game_3fg = fg3m / fg3a, 
+                past_five_3fg = total_fg3m / total_fg3a,
+                posterior_3fg = (fg3m + total_fg3m) / (fg3a + total_fg3a)) %>%
+      gather(key = "Category", value = "Value", 
+             this_game_3fg:posterior_3fg) %>%
+      mutate(Category = factor(Category, levels = c("this_game_3fg",
+                                                    "past_five_3fg",
+                                                    "posterior_3fg")))
+    
+    myurl <- final$urlPlayerThumbnail
+    z <- tempfile()
+    download.file(myurl, z, mode="wb")
+    pic <- readPNG(z)
+    file.remove(z)
+    pic <- rasterGrob(pic, interpolate = T)
+    
+    final_percent %>%
+      mutate(Category = factor(Category, levels = c(levels(Category), ""))) %>%
+      ggplot(aes(x = Category, y = Value)) +
+      annotation_custom(pic, xmin = 3.5, xmax = 4.5, ymin = -.06, 
+                        ymax = .3) +
+      geom_segment(aes(x = Category, xend = Category, y = 0, yend = Value)) +
+      geom_point(size = 5, fill = "white", pch = 22) +
+      scale_y_continuous(labels = percent, limits = c(0, 1)) +
+      scale_x_discrete(drop = F, 
+                       labels = c("Today", "Prior", "Expected", "")) +
+      labs(y = "Percent", title = "Three Point Percentages")
     
   })
   
@@ -188,7 +244,7 @@ server <- function(input, output) {
     final_count <- create_table()[[2]]
     
     final_count <- final_count %>%
-      select(namePlayer, ends_with("ft"))
+      select(namePlayer, contains("ft"))
     
   })
   
@@ -201,11 +257,11 @@ server <- function(input, output) {
     final_percent <- final %>%
       group_by(namePlayer) %>%
       summarize(this_game_ft = ftm / fta, 
-                past_five_ft = total_ftm / total_fta, 
+                prior_ft = total_ftm / total_fta, 
                 posterior_ft = (ftm + total_ftm) / (fta + total_fta)) %>%
       gather(key = "Category", value = "Value", this_game_ft:posterior_ft) %>%
       mutate(Category = factor(Category, levels = c("this_game_ft",
-                                                    "past_five_ft",
+                                                    "prior_ft",
                                                     "posterior_ft")))
     
     myurl <- final$urlPlayerThumbnail
@@ -223,7 +279,8 @@ server <- function(input, output) {
       geom_segment(aes(x = Category, xend = Category, y = 0, yend = Value)) +
       geom_point(size = 5, fill = "white", pch = 22) +
       scale_y_continuous(labels = percent, limits = c(0, 1)) +
-      scale_x_discrete(drop = F, labels = c("Today", "Prior", "Expected", "")) +
+      scale_x_discrete(drop = F,
+                       labels = c("Today", "Prior", "Expected", "")) +
       labs(y = "Percent", title = "Free Throw Percentages")
     
   })
