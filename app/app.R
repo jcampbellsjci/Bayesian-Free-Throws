@@ -35,7 +35,7 @@ ui <- fluidPage(
       
       sliderInput("prior",
                   "Prior",
-                  min = 1, max = 10, value = 3)
+                  min = 1, max = 10, value = 1)
     ),
     
     # Main Panel plots the graph and produces a table of info
@@ -113,6 +113,7 @@ server <- function(input, output) {
     game_logs <- logs %>%
       filter(namePlayer == input$player) %>%
       mutate(dateGame = as.Date(dateGame)) %>%
+      filter(dateGame < input$date) %>%
       top_n(n = as.numeric(input$prior), dateGame) %>%
       select(namePlayer, fgm, fga, fg3m, fg3a, ftm, fta, 
              urlPlayerThumbnail) %>%
