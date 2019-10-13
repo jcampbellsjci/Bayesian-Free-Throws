@@ -27,7 +27,7 @@ ui <- fluidPage(
     sidebarPanel(
       dateInput("date",
                 "Date",
-                value = "2019-01-01"),
+                value = Sys.Date()),
       
       uiOutput("team_selection"),
       
@@ -84,14 +84,16 @@ server <- function(input, output) {
                VISITOR_TEAM_ID == id_choice$idTeam) %>%
       select(GAME_ID)
     
-    current <- box_scores(game_ids = game_id$GAME_ID, 
+    tryCatch({
+      current <- box_scores(game_ids = game_id$GAME_ID, 
                           box_score_types = c("Traditional"), 
                           result_types = c("player"), 
                           assign_to_environment = F) %>%
       .$dataBoxScore %>%
       .[[1]] %>%
       filter(idTeam == id_choice$idTeam) %>%
-      select(namePlayer, fgm, fga, fg3m, fg3a, ftm, fta)
+      select(namePlayer, fgm, fga, fg3m, fg3a, ftm, fta)},
+      error = function(c){"No data yet"})
     
     output <- list(current)
     
@@ -110,36 +112,41 @@ server <- function(input, output) {
     
     current <- get_box_score()[[1]]
     
-    game_logs <- logs %>%
-      filter(namePlayer == input$player) %>%
-      mutate(dateGame = as.Date(dateGame)) %>%
-      filter(dateGame < input$date) %>%
-      top_n(n = as.numeric(input$prior), dateGame) %>%
-      select(namePlayer, fgm, fga, fg3m, fg3a, ftm, fta, 
-             urlPlayerThumbnail) %>%
-      group_by(namePlayer, urlPlayerThumbnail) %>%
-      summarize(total_fgm = sum(fgm), total_fga = sum(fga),
-                total_fg3m = sum(fg3m), total_fg3a = sum(fg3a),
-                total_ftm = sum(ftm), total_fta = sum(fta)) %>%
-      ungroup()
-    
-    final <- current %>%
-      filter(namePlayer == input$player) %>%
-      left_join(game_logs)
-    
-    final_count <- final %>%
-      group_by(namePlayer) %>%
-      mutate(this_game_fg = fgm / fga,
-             prior_fg = total_fgm / total_fga,
-             posterior_fg = (fgm + total_fgm) / (fga + total_fga),
-             this_game_3fg = fg3m / fg3a,
-             prior_3fg = total_fg3m / total_fg3a,
-             posterior_3fg = (fg3m + total_fg3m) / (fg3a + total_fg3a),
-             this_game_ft = ftm / fta, 
-             prior_ft = total_ftm / total_fta, 
-             posterior_ft = (ftm + total_ftm) / (fta + total_fta)) %>%
-      select(- urlPlayerThumbnail)
-    
+    if(current == "No data yet"){
+      final <- current
+      final_count <- current
+    } else{
+      game_logs <- logs %>%
+        filter(namePlayer == input$player) %>%
+        mutate(dateGame = as.Date(dateGame)) %>%
+        filter(dateGame < input$date) %>%
+        top_n(n = as.numeric(input$prior), dateGame) %>%
+        select(namePlayer, fgm, fga, fg3m, fg3a, ftm, fta, 
+               urlPlayerThumbnail) %>%
+        group_by(namePlayer, urlPlayerThumbnail) %>%
+        summarize(total_fgm = sum(fgm), total_fga = sum(fga),
+                  total_fg3m = sum(fg3m), total_fg3a = sum(fg3a),
+                  total_ftm = sum(ftm), total_fta = sum(fta)) %>%
+        ungroup()
+      
+      final <- current %>%
+        filter(namePlayer == input$player) %>%
+        left_join(game_logs)
+      
+      final_count <- final %>%
+        group_by(namePlayer) %>%
+        mutate(this_game_fg = fgm / fga,
+               prior_fg = total_fgm / total_fga,
+               posterior_fg = (fgm + total_fgm) / (fga + total_fga),
+               this_game_3fg = fg3m / fg3a,
+               prior_3fg = total_fg3m / total_fg3a,
+               posterior_3fg = (fg3m + total_fg3m) / (fg3a + total_fg3a),
+               this_game_ft = ftm / fta, 
+               prior_ft = total_ftm / total_fta, 
+               posterior_ft = (ftm + total_ftm) / (fta + total_fta)) %>%
+        select(- urlPlayerThumbnail)
+    }
+
     output <- list(final, final_count)
     
   })
@@ -149,10 +156,14 @@ server <- function(input, output) {
     
     final_count <- create_table()[[2]]
     
-    final_count <- final_count %>%
-      select(namePlayer, fgm, fga, total_fgm, total_fga,
-             this_game_fg, prior_fg, posterior_fg)
-    
+    if(final_count == "No data yet"){
+      final_count
+    } else{
+      final_count <- final_count %>%
+        select(namePlayer, fgm, fga, total_fgm, total_fga,
+               this_game_fg, prior_fg, posterior_fg)
+    }
+
   })
   
   # Now creating the plot that will be used in the main panel
@@ -161,7 +172,10 @@ server <- function(input, output) {
     final <- create_table()[[1]]
     final_count <- create_table()[[2]]
     
-    final_percent <- final %>%
+    if(final_count == "No data yet"){
+      final_count
+    } else{
+      final_percent <- final %>%
       group_by(namePlayer) %>%
       summarize(this_game_fg = fgm / fga, 
                 past_five_fg = total_fgm / total_fga,
@@ -188,6 +202,7 @@ server <- function(input, output) {
       scale_y_continuous(labels = percent, limits = c(0, 1)) +
       scale_x_discrete(drop = F, labels = c("Today", "Prior", "Expected", "")) +
       labs(y = "Percent", title = "Field Goal Percentages")
+    }
     
   })
   
@@ -196,8 +211,12 @@ server <- function(input, output) {
     
     final_count <- create_table()[[2]]
     
-    final_count <- final_count %>%
+    if(final_count == "No data yet"){
+      final_count
+    } else{
+      final_count <- final_count %>%
       select(namePlayer, contains("3"))
+    }
     
   })
   
@@ -207,7 +226,10 @@ server <- function(input, output) {
     final <- create_table()[[1]]
     final_count <- create_table()[[2]]
     
-    final_percent <- final %>%
+    if(final_count == "No data yet"){
+      final_count
+    } else{
+      final_percent <- final %>%
       group_by(namePlayer) %>%
       summarize(this_game_3fg = fg3m / fg3a, 
                 past_five_3fg = total_fg3m / total_fg3a,
@@ -236,6 +258,7 @@ server <- function(input, output) {
       scale_x_discrete(drop = F, 
                        labels = c("Today", "Prior", "Expected", "")) +
       labs(y = "Percent", title = "Three Point Percentages")
+    }
     
   })
   
@@ -244,8 +267,12 @@ server <- function(input, output) {
     
     final_count <- create_table()[[2]]
     
-    final_count <- final_count %>%
+    if(final_count == "No data yet"){
+      final_count
+    } else{
+      final_count <- final_count %>%
       select(namePlayer, contains("ft"))
+    }
     
   })
   
@@ -255,7 +282,10 @@ server <- function(input, output) {
     final <- create_table()[[1]]
     final_count <- create_table()[[2]]
     
-    final_percent <- final %>%
+    if(final_count == "No data yet"){
+      final_count
+    } else{
+      final_percent <- final %>%
       group_by(namePlayer) %>%
       summarize(this_game_ft = ftm / fta, 
                 prior_ft = total_ftm / total_fta, 
@@ -283,6 +313,7 @@ server <- function(input, output) {
       scale_x_discrete(drop = F,
                        labels = c("Today", "Prior", "Expected", "")) +
       labs(y = "Percent", title = "Free Throw Percentages")
+    }
     
   })
   
