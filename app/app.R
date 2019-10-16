@@ -77,11 +77,11 @@ server <- function(input, output) {
                VISITOR_TEAM_ID == id_choice$idTeam) %>%
       select(GAME_ID)
     
-    tryCatch({
-      current <- box_scores(game_ids = game_id$GAME_ID, 
-                          box_score_types = c("Traditional"), 
-                          result_types = c("player"), 
-                          assign_to_environment = F) %>%
+    current <- tryCatch({
+      box_scores(game_ids = game_id$GAME_ID,
+                 box_score_types = c("Traditional"),
+                 result_types = c("player"),
+                 assign_to_environment = F) %>%
         .$dataBoxScore %>%
         .[[1]] %>%
         filter(idTeam == id_choice$idTeam) %>%
@@ -95,7 +95,11 @@ server <- function(input, output) {
   output$player_selection <- renderUI({
     current <- get_box_score()[[1]]
     
-    selectInput("player", "Player", current$namePlayer)
+    if(current == "No data yet"){
+      selectInput("player", "Player", current)
+    } else{
+      selectInput("player", "Player", current$namePlayer)
+    }
   })
   
   create_table <- reactive({
