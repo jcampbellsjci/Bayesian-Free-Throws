@@ -8,12 +8,13 @@ library(tidyverse)
 
 # Sourcing the date_ids function
 source("date_ids.R")
+source("box_score.R")
 
 # Doing an initial load team dictionary and game logs
 team_dictionary <- nba_teams()
-logs <- game_logs(seasons = 2019, result_types = "player", 
-                  assign_to_environment = F, 
-                  season_types = c("Regular Season", "Playoffs"))
+logs <- game_logs(seasons = 2020, result_types = "player",
+                  assign_to_environment = F,
+                  season_types = c("Regular Season"))
 
 ui <- fluidPage(
   titlePanel("Bayes Free Throw"),
@@ -78,14 +79,7 @@ server <- function(input, output) {
       select(GAME_ID)
     
     current <- tryCatch({
-      box_scores(game_ids = game_id$GAME_ID,
-                 box_score_types = c("Traditional"),
-                 result_types = c("player"),
-                 assign_to_environment = F) %>%
-        .$dataBoxScore %>%
-        .[[1]] %>%
-        filter(idTeam == id_choice$idTeam) %>%
-        select(namePlayer, fgm, fga, fg3m, fg3a, ftm, fta)},
+      box_score(date = input$date, game_id = game_id$GAME_ID, team_id = id_choice$idTeam)},
         error = function(c){"No data yet"})
     
     output <- list(current)
@@ -174,18 +168,8 @@ server <- function(input, output) {
                                                       "past_five_fg",
                                                       "posterior_fg")))
       
-      myurl <- final$urlPlayerThumbnail
-      z <- tempfile()
-      download.file(myurl, z, mode="wb")
-      pic <- readPNG(z)
-      file.remove(z)
-      pic <- rasterGrob(pic, interpolate = T)
-      
       final_percent %>%
-        mutate(Category = factor(Category, levels = c(levels(Category), ""))) %>%
         ggplot(aes(x = Category, y = Value)) +
-        annotation_custom(pic, xmin = 3.5, xmax = 4.5, ymin = -.06, 
-                          ymax = .3) +
         geom_segment(aes(x = Category, xend = Category, y = 0, yend = Value)) +
         geom_point(size = 5, fill = "white", pch = 22) +
         scale_y_continuous(labels = percent, limits = c(0, 1)) +
@@ -225,18 +209,9 @@ server <- function(input, output) {
                                                       "past_five_3fg",
                                                       "posterior_3fg")))
       
-      myurl <- final$urlPlayerThumbnail
-      z <- tempfile()
-      download.file(myurl, z, mode="wb")
-      pic <- readPNG(z)
-      file.remove(z)
-      pic <- rasterGrob(pic, interpolate = T)
-      
       final_percent %>%
         mutate(Category = factor(Category, levels = c(levels(Category), ""))) %>%
         ggplot(aes(x = Category, y = Value)) +
-        annotation_custom(pic, xmin = 3.5, xmax = 4.5, ymin = -.06, 
-                          ymax = .3) +
         geom_segment(aes(x = Category, xend = Category, y = 0, yend = Value)) +
         geom_point(size = 5, fill = "white", pch = 22) +
         scale_y_continuous(labels = percent, limits = c(0, 1)) +
@@ -276,18 +251,9 @@ server <- function(input, output) {
                                                       "prior_ft",
                                                       "posterior_ft")))
       
-      myurl <- final$urlPlayerThumbnail
-      z <- tempfile()
-      download.file(myurl, z, mode="wb")
-      pic <- readPNG(z)
-      file.remove(z)
-      pic <- rasterGrob(pic, interpolate = T)
-      
       final_percent %>%
         mutate(Category = factor(Category, levels = c(levels(Category), ""))) %>%
         ggplot(aes(x = Category, y = Value)) +
-        annotation_custom(pic, xmin = 3.5, xmax = 4.5, ymin = -.06, 
-                          ymax = .3) +
         geom_segment(aes(x = Category, xend = Category, y = 0, yend = Value)) +
         geom_point(size = 5, fill = "white", pch = 22) +
         scale_y_continuous(labels = percent, limits = c(0, 1)) +
