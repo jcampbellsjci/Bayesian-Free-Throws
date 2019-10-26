@@ -78,9 +78,11 @@ server <- function(input, output) {
                VISITOR_TEAM_ID == id_choice$idTeam) %>%
       select(GAME_ID)
     
-    current <- tryCatch({
-      box_score(date = input$date, game_id = game_id$GAME_ID, team_id = id_choice$idTeam)},
-        error = function(c){"No data yet"})
+    current <- box_score(date = input$date, game_id = game_id$GAME_ID,
+                         team_id = id_choice$idTeam)
+    if(nrow(current) == 0){
+      current <- "No data yet"
+    }
     
     output <- list(current)
   })
