@@ -131,6 +131,12 @@ server <- function(input, output) {
                this_game_ft = ftm / fta, 
                prior_ft = total_ftm / total_fta, 
                posterior_ft = (ftm + total_ftm) / (fta + total_fta)) %>%
+        mutate_at(.vars = vars(prior_fg, posterior_fg),
+                  .funs = funs(ifelse(is.na(.) == T, this_game_fg, .))) %>%
+        mutate_at(.vars = vars(prior_3fg, posterior_3fg),
+                  .funs = funs(ifelse(is.na(.) == T, this_game_3fg, .))) %>%
+        mutate_at(.vars = vars(prior_ft, posterior_ft),
+                  .funs = funs(ifelse(is.na(.) == T, this_game_ft, .))) %>%
         select(- urlPlayerThumbnail)
     }
 
