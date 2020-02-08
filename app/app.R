@@ -1,9 +1,17 @@
+#
+# This is a Shiny web application. You can run the application by clicking
+# the 'Run App' button above.
+#
+# Find out more about building applications with Shiny here:
+#
+#    http://shiny.rstudio.com/
+#
+
 library(shiny)
-library(rjson)
-library(nbastatR)
-library(png)
-library(grid)
 library(scales)
+library(nbastatR)
+library(rjson)
+library(httr)
 library(tidyverse)
 
 # Sourcing the date_ids function
@@ -16,7 +24,9 @@ logs <- game_logs(seasons = 2020, result_types = "player",
                   assign_to_environment = F,
                   season_types = c("Regular Season"))
 
+# Define UI for application that draws a histogram
 ui <- fluidPage(
+  
   titlePanel("Bayes Free Throw"),
   
   sidebarLayout(
@@ -38,16 +48,16 @@ ui <- fluidPage(
                   min = 1, max = 10, value = 1)
     ),
     
-    # Main Panel plots the graph and produces a table of info
+    # Show a plot of the generated distribution
     mainPanel(tabsetPanel(
-      tabPanel("Field Goals", plotOutput("plot_fg"), tableOutput("table_fg")),
-      tabPanel("Three Pointers", plotOutput("plot_3fg"), 
-               tableOutput("table_3fg")),
-      tabPanel("Free Throws", plotOutput("plot_ft"), tableOutput("table_ft"))))
+      tabPanel("Field Goals", tableOutput("table_fg"), plotOutput("plot_fg")),
+      tabPanel("Three Pointers", tableOutput("table_3fg"),
+               plotOutput("plot_3fg")),
+      tabPanel("Free Throws", tableOutput("table_ft"), plotOutput("plot_ft"))))
   )
-  
 )
 
+# Define server logic required to draw a histogram
 server <- function(input, output) {
   get_available_teams <- reactive({
     game_id_today <- date_ids(as.character(input$date))
@@ -141,7 +151,7 @@ server <- function(input, output) {
                   .funs = funs(ifelse(is.na(.) == T, this_game_ft, .))) %>%
         select(- urlPlayerThumbnail)
     }
-
+    
     output <- list(final, final_count)
   })
   
@@ -154,7 +164,11 @@ server <- function(input, output) {
     } else{
       final_count <- final_count %>%
         select(namePlayer, fgm, fga, total_fgm, total_fga,
-               this_game_fg, prior_fg, posterior_fg)
+               this_game_fg, prior_fg, posterior_fg) %>%
+        rename(Player = namePlayer, FGM_Today = fgm, FGA_Today = fga,
+               FGM_Prior = total_fgm, FGA_Prior = total_fga,
+               `FG%_Today` = this_game_fg, `FG%_Prior` = prior_fg,
+               `FG%_Posterior` = posterior_fg)
     }
   })
   
@@ -183,7 +197,7 @@ server <- function(input, output) {
         scale_y_continuous(labels = percent, limits = c(0, 1)) +
         scale_x_discrete(drop = F, labels = c("Today", "Prior", "Expected", "")) +
         labs(y = "Percent", title = "Field Goal Percentages")
-      }
+    }
   })
   
   # Next we create the table that will be in the main panel
@@ -194,8 +208,12 @@ server <- function(input, output) {
       final_count
     } else{
       final_count <- final_count %>%
-        select(namePlayer, contains("3"))
-      }
+        select(namePlayer, contains("3")) %>%
+        rename(Player = namePlayer, FG3M_Today = fg3m, FG3A_Today = fg3a,
+               FG3M_Prior = total_fg3m, FG3A_Prior = total_fg3a,
+               `FG3%_Today` = this_game_3fg, `FG3%_Prior` = prior_3fg,
+               `FG3%_Posterior` = posterior_3fg)
+    }
   })
   
   # Now creating the plot that will be used in the main panel
@@ -218,7 +236,6 @@ server <- function(input, output) {
                                                       "posterior_3fg")))
       
       final_percent %>%
-        mutate(Category = factor(Category, levels = c(levels(Category), ""))) %>%
         ggplot(aes(x = Category, y = Value)) +
         geom_segment(aes(x = Category, xend = Category, y = 0, yend = Value)) +
         geom_point(size = 5, fill = "white", pch = 22) +
@@ -226,8 +243,8 @@ server <- function(input, output) {
         scale_x_discrete(drop = F, 
                          labels = c("Today", "Prior", "Expected", "")) +
         labs(y = "Percent", title = "Three Point Percentages")
-      }
-    })
+    }
+  })
   
   # Next we create the table that will be in the main panel
   output$table_ft <- renderTable({
@@ -237,9 +254,13 @@ server <- function(input, output) {
       final_count
     } else{
       final_count <- final_count %>%
-        select(namePlayer, contains("ft"))
-      }
-    })
+        select(namePlayer, contains("ft")) %>%
+        rename(Player = namePlayer, FTM_Today = ftm, FTA_Today = fta,
+               FTM_Prior = total_ftm, FTA_Prior = total_fta,
+               `FT%_Today` = this_game_ft, `FT%_Prior` = prior_ft,
+               `FT%_Posterior` = posterior_ft)
+    }
+  })
   
   # Now creating the plot that will be used in the main panel
   output$plot_ft <- renderPlot({
@@ -260,7 +281,6 @@ server <- function(input, output) {
                                                       "posterior_ft")))
       
       final_percent %>%
-        mutate(Category = factor(Category, levels = c(levels(Category), ""))) %>%
         ggplot(aes(x = Category, y = Value)) +
         geom_segment(aes(x = Category, xend = Category, y = 0, yend = Value)) +
         geom_point(size = 5, fill = "white", pch = 22) +
@@ -268,9 +288,9 @@ server <- function(input, output) {
         scale_x_discrete(drop = F,
                          labels = c("Today", "Prior", "Expected", "")) +
         labs(y = "Percent", title = "Free Throw Percentages")
-      }
+    }
   })
-  
 }
 
+# Run the application 
 shinyApp(ui = ui, server = server)
